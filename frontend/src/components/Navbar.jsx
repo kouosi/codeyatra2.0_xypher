@@ -43,6 +43,8 @@ export default function Navbar() {
         {navLink("/", "Home")}
         {navLink("/questions", "Problems")}
         {navLink("/diagnose", "Diagnose")}
+        {navLink("/pathfinder", "Pathfinder")}
+        {navLink("/progress", "Progress")}
 
         {user ? (
           <div className="flex items-center gap-3">
