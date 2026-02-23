@@ -107,17 +107,17 @@ def submit_answer(session_id):
 
     # Log the attempt
     log_attempt(session_id, {
-        "step_id": step_id,
-        "selected_option_id": selected_option_id,
+        "checkpoint_id": checkpoint_id,
+        "selected_value": str(selected_value),
         "attempt_number": attempt_number,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "time_spent_seconds": time_spent,
     })
 
     # Evaluate
-    result = evaluate_step_answer(
-        step=step,
-        selected_option_id=int(selected_option_id),
+    result = evaluate_checkpoint_answer(
+        checkpoint=checkpoint,
+        student_answer=str(selected_value),
         attempt_number=attempt_number,
         student_id=session["student_id"],
     )

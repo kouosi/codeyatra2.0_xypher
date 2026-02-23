@@ -27,7 +27,7 @@ export default function QuestionsPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-      authFetch("/api/concepts?syllabus_only=true&include_prerequisites=true")
+    authFetch("/api/concepts?syllabus_only=true&include_prerequisites=true")
       .then((res) => {
         if (!res.ok) throw new Error(`Server error: ${res.status}`);
         return res.json();

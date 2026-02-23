@@ -155,10 +155,8 @@ export default function PathfinderPage() {
 
 function RoadmapTree({ path, onDiagnose }) {
   const allNodes = path.prerequisite_chain || [];
-  const target = allNodes.length > 0
-    ? allNodes[allNodes.length - 1]
-    : { id: path.concept_id, name: path.concept_name };
   const prereqs = allNodes.slice(0, -1);
+  const target = allNodes.length > 0 ? allNodes[allNodes.length - 1] : path.concept;
 
   /* Group nodes into tiers (reversed: foundation at bottom) */
   const tiers = [];

@@ -19,7 +19,7 @@ const STATUS_META = {
     dot: "bg-emerald-400",
     xp: 100,
   },
-  passed: {  // legacy alias
+  passed: {
     label: "Mastered",
     color: "text-emerald-700",
     bg: "bg-emerald-50 border-emerald-200",
@@ -31,7 +31,7 @@ const STATUS_META = {
     color: "text-blue-700",
     bg: "bg-blue-50 border-blue-200",
     dot: "bg-blue-400",
-    xp: 0,
+    xp: 50,
   },
   needs_review: {
     label: "Needs Review",
@@ -114,28 +114,31 @@ export default function ProgressPage() {
 
   const conceptsProgress = progressData?.concepts ?? [];
   const statusMap = {};
+  const masteredAtMap = {};
   conceptsProgress.forEach((entry) => {
-    statusMap[entry.id] = { status: entry.status || "not_started", masteredAt: entry.mastered_at };
+    statusMap[entry.id] = entry.status || "not_started";
+    masteredAtMap[entry.id] = entry.mastered_at || null;
   });
 
   const rows = concepts.map((c) => ({
     ...c,
-    status: statusMap[c.id]?.status || "not_started",
-    masteredAt: statusMap[c.id]?.masteredAt || null,
+    status: statusMap[c.id] || "not_started",
+    masteredAt: masteredAtMap[c.id] || null,
   }));
 
-  const passed = rows.filter((r) => r.status === "mastered").length;
+  const mastered = rows.filter((r) => r.status === "mastered" || r.status === "passed").length;
+  const inProgress = rows.filter((r) => r.status === "in_progress").length;
   const reviewed = rows.filter((r) => r.status === "needs_review").length;
-  const notStarted = rows.length - passed - reviewed;
-  const totalXp = passed * 100 + reviewed * 30;
+  const notStarted = rows.length - mastered - inProgress - reviewed;
+  const totalXp = mastered * 100 + inProgress * 50 + reviewed * 30;
   const levelInfo = getLevel(totalXp);
 
   const achievements = [];
-  if (passed >= 1) achievements.push({ label: "First Mastery", desc: "Mastered your first concept" });
-  if (passed >= 3) achievements.push({ label: "On a Roll", desc: "Mastered 3 concepts" });
-  if (passed >= 5) achievements.push({ label: "Champion", desc: "Mastered 5 concepts" });
+  if (mastered >= 1) achievements.push({ label: "First Mastery", desc: "Mastered your first concept" });
+  if (mastered >= 3) achievements.push({ label: "On a Roll", desc: "Mastered 3 concepts" });
+  if (mastered >= 5) achievements.push({ label: "Champion", desc: "Mastered 5 concepts" });
   if (reviewed >= 1) achievements.push({ label: "Gap Finder", desc: "Diagnosed your first gap" });
-  if (passed + reviewed >= rows.length && rows.length > 0) achievements.push({ label: "Full Coverage", desc: "Diagnosed every concept" });
+  if (mastered + inProgress + reviewed >= rows.length && rows.length > 0) achievements.push({ label: "Full Coverage", desc: "Diagnosed every concept" });
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10">
@@ -181,7 +184,7 @@ export default function ProgressPage() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-3 mb-6">
-        <StatCard value={passed} label="Mastered" color="text-emerald-600" bgColor="bg-emerald-50 border-emerald-200" />
+        <StatCard value={mastered} label="Mastered" color="text-emerald-600" bgColor="bg-emerald-50 border-emerald-200" />
         <StatCard value={reviewed} label="Reviewing" color="text-amber-600" bgColor="bg-amber-50 border-amber-200" />
         <StatCard value={notStarted} label="Remaining" color="text-gray-500" bgColor="bg-gray-50 border-gray-200" />
       </div>
@@ -191,10 +194,10 @@ export default function ProgressPage() {
         <div className="mb-6 rounded-xl bg-white border border-gray-200 p-4">
           <div className="flex justify-between text-xs text-text-muted mb-2">
             <span className="font-semibold">Mission Coverage</span>
-            <span>{passed + reviewed}/{rows.length} ({Math.round(((passed + reviewed) / rows.length) * 100)}%)</span>
+            <span>{mastered + reviewed}/{rows.length} ({Math.round(((mastered + reviewed) / rows.length) * 100)}%)</span>
           </div>
           <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden flex">
-            <div className="h-full bg-emerald-400 transition-all duration-700" style={{ width: `${(passed / rows.length) * 100}%` }} />
+            <div className="h-full bg-emerald-400 transition-all duration-700" style={{ width: `${(mastered / rows.length) * 100}%` }} />
             <div className="h-full bg-amber-400 transition-all duration-700" style={{ width: `${(reviewed / rows.length) * 100}%` }} />
           </div>
           <div className="flex gap-4 mt-2 text-[10px] text-text-muted">
@@ -234,14 +237,16 @@ export default function ProgressPage() {
           return (
             <div key={row.id}
               className={`rounded-2xl border bg-white p-4 flex items-center gap-4 transition-all hover:shadow-sm ${
-                row.status === "mastered" ? "border-emerald-200" : "border-gray-200"
+                (row.status === "mastered" || row.status === "passed") ? "border-emerald-200" : "border-gray-200"
               }`}>
               {/* Status icon */}
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                row.status === "mastered" ? "bg-emerald-100" : row.status === "needs_review" ? "bg-amber-100" : "bg-gray-100"
+                (row.status === "mastered" || row.status === "passed") ? "bg-emerald-100" : row.status === "in_progress" ? "bg-blue-100" : row.status === "needs_review" ? "bg-amber-100" : "bg-gray-100"
               }`}>
-                {row.status === "mastered" ? (
+                {(row.status === "mastered" || row.status === "passed") ? (
                   <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                ) : row.status === "in_progress" ? (
+                  <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                 ) : row.status === "needs_review" ? (
                   <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 ) : (
@@ -269,7 +274,7 @@ export default function ProgressPage() {
               </span>
 
               {/* Action */}
-              {row.status !== "mastered" && (
+              {(row.status !== "mastered" && row.status !== "passed") && (
                 <button onClick={() => navigate("/diagnose")}
                   className="shrink-0 text-[11px] px-3 py-1.5 rounded-lg bg-amber-brand hover:bg-amber-hover text-white font-bold transition-all active:scale-95">
                   Diagnose

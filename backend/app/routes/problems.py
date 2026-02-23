@@ -12,7 +12,6 @@ from app.utils.response import success_response, error_response
 
 problems_bp = Blueprint("problems", __name__)
 
-
 @problems_bp.get("/")
 def list_problems():
     query = Problem.query
@@ -57,22 +56,27 @@ def get_problem(problem_id):
         .all()
     )
 
-    steps_list = []
-    for step in steps:
-        # Never expose is_correct to the client
-        options = StepOption.query.filter_by(step_id=step.id).all()
-        step_dict = {
-            "id": step.id,
-            "step_number": step.step_number,
-            "step_title": step.step_title,
-            "step_description": step.step_description,
-            "options": [
-                {"id": o.id, "option_text": o.option_text}
-                for o in options
+    cp_list = []
+    for cp in checkpoints:
+        choices = CheckpointChoice.query.filter_by(checkpoint_id=cp.id).all()
+        cp_dict = {
+            "id": cp.id,
+            "order": cp.order,
+            "question": cp.question,
+            "unit": cp.unit,
+            "input_type": cp.input_type,
+            "hint": cp.hint,
+            "choices": [
+                {"id": c.id, "label": c.label, "value": c.value}
+                for c in choices
             ],
         }
-        steps_list.append(step_dict)
+        cp_list.append(cp_dict)
 
-    result = problem.to_dict()
-    result["steps"] = steps_list
-    return success_response(result)
+    return success_response({
+        "id": problem.id,
+        "title": problem.title,
+        "description": problem.description,
+        "concept_id": problem.concept_id,
+        "difficulty": problem.difficulty, "checkpoints": cp_list,
+    })

@@ -7,30 +7,60 @@ Step-based flow:
   - If wrong -> return feedback, allow retry (with hint on 2nd attempt).
 """
 
-from app.models import db, Step, StepOption, StudentProgress, Concept
+import re
+from app.models import db, ErrorPattern, Checkpoint, StudentProgress, Concept
+
+
+def _parse_numeric(val):
+    """Try to extract a float from a string value. Returns None if not numeric."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        val = val.strip()
+        m = re.match(r'^[-+]?\d*\.?\d+', val)
+        if m:
+            return float(m.group())
+    return None
+
+
+def _answers_match(student_answer: str, correct_answer: str, tolerance: float = 0.01) -> bool:
+    """Compare two answers: tries numeric first, falls back to case-insensitive string."""
+    s_num = _parse_numeric(student_answer)
+    c_num = _parse_numeric(correct_answer)
+    if s_num is not None and c_num is not None:
+        return abs(s_num - c_num) <= tolerance
+    # String comparison (case-insensitive, stripped)
+    return str(student_answer).strip().lower() == str(correct_answer).strip().lower()
 
 
 # ---------------------------------------------------------------------------
 # Primary evaluation entry point
 # ---------------------------------------------------------------------------
 
-def evaluate_step_answer(
-    step,
-    selected_option_id: int,
-    attempt_number: int,
-    student_id: int,
-) -> dict:
+def match_error_pattern(checkpoint_id: int, student_answer: str) -> ErrorPattern | None:
     """
-    Evaluate a student's option selection at a Step.
+    Find the highest-confidence ErrorPattern whose trigger_value matches
+    the student's answer (string or numeric comparison).
+    """
+    patterns = ErrorPattern.query.filter_by(checkpoint_id=checkpoint_id).all()
 
-    Returns a standardised response dict:
-      correct       : bool
-      feedback      : str
-      explanation   : str | None  (only when correct)
-      next_action   : "continue" | "complete" | "retry"
-      hint          : str | None
-    """
-    option = StepOption.query.get(selected_option_id)
+    matches = []
+    for p in patterns:
+        s_num = _parse_numeric(student_answer)
+        t_num = _parse_numeric(p.trigger_value)
+        if s_num is not None and t_num is not None:
+            if abs(s_num - t_num) <= p.trigger_tolerance:
+                matches.append(p)
+        else:
+            # String comparison
+            if str(student_answer).strip().lower() == str(p.trigger_value).strip().lower():
+                matches.append(p)
+
+    if not matches:
+        return None
+
+    matches.sort(key=lambda p: p.confidence, reverse=True)
+    return matches[0]
 
     # Guard: option must belong to this step
     if option is None or option.step_id != step.id:
@@ -73,12 +103,17 @@ def evaluate_step_answer(
 # Progress helpers (shared with sessions route)
 # ---------------------------------------------------------------------------
 
-def update_student_progress(student_id: int, concept_id) -> None:
-    """Increment attempts and update last_attempted_at when a problem is solved."""
-    from datetime import datetime, timezone
-
-    if concept_id is None:
-        return
+def evaluate_checkpoint_answer(
+    checkpoint: Checkpoint,
+    student_answer: str,
+    attempt_number: int,
+    student_id: int,
+) -> dict:
+    """
+    Evaluate a student's answer at a checkpoint and return the full response payload.
+    Accepts string-based answers for both numeric and MCQ checkpoints.
+    """
+    is_correct = _answers_match(student_answer, checkpoint.correct_answer, checkpoint.tolerance)
 
     progress = StudentProgress.query.filter_by(
         student_id=student_id,

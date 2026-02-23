@@ -7,11 +7,9 @@ POST /api/diagnose/evaluate -- evaluate answers and update mastery
 
 from datetime import datetime, timezone
 from flask import Blueprint, request
-from flask_jwt_extended import (
-    jwt_required,
-    get_jwt_identity,
-    verify_jwt_in_request,
-)
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
+import json as _json
+
 from app.models import (
     db,
     Concept,
@@ -116,6 +114,8 @@ def evaluate_diagnostic():
         expected = (question.expected_answer or "").strip()
         is_correct = False
 
+        # For MCQ, expected_answer is the correct choice id; compare as strings
+        # Also try numeric comparison for free-text numeric questions
         try:
             expected_num = float(expected)
             student_num = float(student_answer)
@@ -126,6 +126,19 @@ def evaluate_diagnostic():
         if is_correct:
             correct_count += 1
 
+        # Look up correct choice text for better feedback
+        correct_text = expected
+        if question.choices_json:
+            try:
+                choices = _json.loads(question.choices_json)
+                for ch in choices:
+                    if ch.get("id") == expected:
+                        correct_text = ch.get("text", expected)
+                        break
+            except (ValueError, TypeError):
+                pass
+
+        # Save answer
         diag_answer = DiagnosticAnswer(
             session_id=session.id,
             question_id=question_id,
@@ -138,9 +151,9 @@ def evaluate_diagnostic():
             "question_id": question_id,
             "is_correct": is_correct,
             "feedback": (
-                "Correct! Expected: " + expected
+                f"Correct! — {correct_text}"
                 if is_correct
-                else "Incorrect. Expected: " + expected
+                else f"Incorrect. Correct answer: {correct_text}"
             ),
         })
 
