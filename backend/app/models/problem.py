@@ -102,16 +102,10 @@ class Step(db.Model):
         nullable=False,
         index=True,
     )
-    order = db.Column(db.Integer, nullable=False)  # display / progression order
-    question = db.Column(db.Text, nullable=False)
-    correct_answer = db.Column(db.String(256), nullable=False)
-    unit = db.Column(db.String(32), nullable=True)  # e.g. "m/s", "N"
-    input_type = db.Column(db.String(32), default="multiple_choice", nullable=False)
-    hint = db.Column(db.Text, nullable=True)  # optional static hint
-    instruction = db.Column(db.Text, nullable=True)  # step instruction text
-
-    # Tolerance for numeric comparison (e.g. ±0.5 for rounding)
-    tolerance = db.Column(db.Float, default=0.01, nullable=False)
+    step_number = db.Column(db.Integer, nullable=False)          # 1-based ordering
+    step_title = db.Column(db.String(256), nullable=False, default="")  # short title
+    step_description = db.Column(db.Text, nullable=True)          # full step body
+    explanation = db.Column(db.Text, nullable=True)               # shown after answer
 
     created_at = db.Column(
         db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
@@ -169,8 +163,7 @@ class StepOption(db.Model):
         nullable=False,
         index=True,
     )
-    label = db.Column(db.String(256), nullable=False)  # display text, e.g. "17.3 m/s"
-    value = db.Column(db.String(256), nullable=False)   # value (string or numeric)
+    option_text = db.Column(db.String(512), nullable=False)  # display text shown to student
     is_correct = db.Column(db.Boolean, default=False, nullable=False)
 
     created_at = db.Column(
@@ -200,10 +193,10 @@ class ErrorPattern(db.Model):
     __tablename__ = "error_patterns"
 
     id = db.Column(db.Integer, primary_key=True)
-    checkpoint_id = db.Column(
+    step_id = db.Column(
         db.Integer,
-        db.ForeignKey("checkpoints.id", ondelete="CASCADE"),
-        nullable=False,
+        db.ForeignKey("steps.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     trigger_value = db.Column(db.String(256), nullable=False)

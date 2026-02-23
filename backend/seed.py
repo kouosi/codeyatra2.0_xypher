@@ -297,79 +297,18 @@ def seed_new_problems():
                 step_number=step_number,
                 step_title=step_title,
                 step_description=step_description,
-                correct_answer=correct_answer,
                 explanation=explanation,
             )
             db.session.add(step)
             db.session.flush()
-            total_p += 1
-            print(f"      + Problem [{problem.id}] {problem.title}")
 
-            for cp_idx, cp_data in enumerate(prob.get("checkpoints", [])):
-                correct_val = None
-                # Find the correct answer value from choices (keep as string)
-                for ch in cp_data.get("choices", []):
-                    if ch.get("is_correct"):
-                        correct_val = str(ch.get("value", ""))
-                        break
-
-                if correct_val is None:
-                    correct_val = ""
-
-                checkpoint = Checkpoint(
-                    problem_id=problem.id,
-                    order=cp_idx,
-                    question=cp_data.get("question", ""),
-                    correct_answer=correct_val,
-                    unit=cp_data.get("unit", ""),
-                    input_type=cp_data.get("type", "multiple_choice"),
-                    hint=cp_data.get("hint_on_first_wrong", ""),
-                    instruction=cp_data.get("instruction"),
-                    tolerance=0.5,  # generous for matching choice values
-                )
-                db.session.add(checkpoint)
-                db.session.flush()
-                total_cp += 1
-
-                # --- Choices (store value as string) ---
-                for ch in cp_data.get("choices", []):
-                    raw_val = ch.get("value", "")
-                    label = str(raw_val)
-
-                    choice = CheckpointChoice(
-                        checkpoint_id=checkpoint.id,
-                        label=label,
-                        value=label,
-                        is_correct=ch.get("is_correct", False),
-                    )
-                    db.session.add(choice)
-                    total_ch += 1
-
-                # --- Error Patterns (store trigger as string) ---
-                for ep in cp_data.get("error_patterns", []):
-                    missing_slug = ep.get("missing_concept_id", "")
-                    missing_cid = concept_id_map.get(missing_slug)
-
-                    wrong_label = str(ep.get("wrong_choice", ""))
-
-                    # Derive error type from diagnosis text
-                    diagnosis = ep.get("diagnosis", "")
-                    error_type = _infer_error_type(diagnosis, missing_slug)
-
-                    pattern = ErrorPattern(
-                        checkpoint_id=checkpoint.id,
-                        trigger_value=wrong_label,
-                        trigger_tolerance=0.5,
-                        error_type=error_type,
-                        diagnosis_text=diagnosis,
-                        missing_concept_id=missing_cid,
-                        confidence=0.90,
-                    )
-                    db.session.add(pattern)
-                    total_ep += 1
+            for opt_data in options_raw:
+                opt_text = str(opt_data) if isinstance(opt_data, str) else str(opt_data.get("text", opt_data))
+                is_correct = str(opt_text).strip() == str(correct_answer).strip()
+                db.session.add(StepOption(step_id=step.id, option_text=opt_text, is_correct=is_correct))
 
     db.session.commit()
-    print(f"\n   ✓ {total_p} problems, {total_cp} checkpoints, {total_ch} choices, {total_ep} error patterns seeded.\n")
+    print(f"\n   ✓ {total_p} problems seeded.\n")
 
 
 def _infer_error_type(diagnosis: str, missing_slug: str) -> str:
@@ -483,7 +422,6 @@ def seed_hifi_problems():
                 step_number=step_number,
                 step_title=step_title,
                 step_description=step_description,
-                correct_answer=correct_answer,
                 explanation=explanation,
             )
             db.session.add(step)
@@ -502,9 +440,6 @@ def seed_hifi_problems():
                         option_text=str(ch.get("value", "")),
                         is_correct=bool(ch.get("is_correct", False)),
                     ))
-                    # Set correct_answer from first is_correct choice
-                    if ch.get("is_correct") and not step.correct_answer:
-                        step.correct_answer = str(ch.get("value", ""))
                     total_o += 1
 
     db.session.commit()
@@ -800,7 +735,8 @@ def seed_simulations():
 # Main
 # ===================================================================
 def main():
-    app = create_app("development")
+    from config import DevelopmentConfig
+    app = create_app(DevelopmentConfig)
 
     with app.app_context():
         # Drop and recreate all tables for a clean seed
