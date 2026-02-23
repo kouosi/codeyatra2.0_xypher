@@ -8,21 +8,34 @@ blueprints, and database setup.
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+<<<<<<< HEAD
+from config import Config
+
+=======
 import config
 from config import config as config_map
+>>>>>>> main
 from app.models import db
 
 
 jwt = JWTManager()
 
 
+<<<<<<< HEAD
+def create_app(config_name=Config):
+=======
 def create_app(config_cls=config.Config):
+>>>>>>> main
     """Application factory — creates and returns a fully configured Flask app."""
 
     app = Flask(__name__)
     app.config.from_object(config_cls)
     app.url_map.strict_slashes = False
+<<<<<<< HEAD
+    # --- extensions ---
+=======
 
+>>>>>>> main
     db.init_app(app)
     jwt.init_app(app)
     CORS(app)
@@ -34,6 +47,7 @@ def create_app(config_cls=config.Config):
     from app.routes.resources import resources_bp
     from app.routes.diagnose import diagnose_bp
     from app.routes.progress import progress_bp
+    from app.routes.simulations import simulations_bp
     from app.routes.students import student_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -43,6 +57,7 @@ def create_app(config_cls=config.Config):
     app.register_blueprint(resources_bp, url_prefix="/api/resources")
     app.register_blueprint(diagnose_bp, url_prefix="/api/diagnose")
     app.register_blueprint(progress_bp, url_prefix="/api/progress")
+    app.register_blueprint(simulations_bp, url_prefix="/api/simulations")
     app.register_blueprint(student_bp, url_prefix="/api/students")
 
     with app.app_context():
