@@ -1,13 +1,13 @@
-"""
+﻿"""
 Problem routes.
 
-GET /api/problems           — list problems (filterable by concept_id, difficulty)
-GET /api/problems/<id>      — full problem with checkpoints + choices (no answers!)
+GET /api/problems           -- list problems (filterable by concept_id, difficulty, subject, topic)
+GET /api/problems/<id>      -- full problem with steps + options (no is_correct field)
 """
 
 from flask import Blueprint, request
 
-from app.models import Problem, Checkpoint, CheckpointChoice
+from app.models import Problem, Step, StepOption
 from app.utils.response import success_response, error_response
 
 problems_bp = Blueprint("problems", __name__)
@@ -20,6 +20,14 @@ def list_problems():
     if concept_id is not None:
         query = query.filter(Problem.concept_id == concept_id)
 
+    subject = request.args.get("subject")
+    if subject:
+        query = query.filter(Problem.subject.ilike(f"%{subject}%"))
+
+    topic = request.args.get("topic")
+    if topic:
+        query = query.filter(Problem.topic.ilike(f"%{topic}%"))
+
     difficulty = request.args.get("difficulty", type=int)
     if difficulty is not None:
         query = query.filter(Problem.difficulty == difficulty)
@@ -29,7 +37,7 @@ def list_problems():
     data = []
     for p in problems:
         d = p.to_dict()
-        d["checkpoint_count"] = Checkpoint.query.filter_by(problem_id=p.id).count()
+        d["step_count"] = Step.query.filter_by(problem_id=p.id).count()
         data.append(d)
 
     return success_response({"problems": data})
@@ -41,10 +49,10 @@ def get_problem(problem_id):
     if problem is None:
         return error_response("NOT_FOUND", "Problem not found.", {"id": problem_id}, 404)
 
-    checkpoints = (
-        Checkpoint.query
+    steps = (
+        Step.query
         .filter_by(problem_id=problem.id)
-        .order_by(Checkpoint.order)
+        .order_by(Step.step_number)
         .all()
     )
 

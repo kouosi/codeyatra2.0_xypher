@@ -1,12 +1,11 @@
 """
-Diagnostic routes — generate and evaluate concept-mastery checks.
+Diagnostic routes -- generate and evaluate concept-mastery checks.
 
-POST /api/diagnose            — generate diagnostic questions for a concept
-POST /api/diagnose/evaluate   — evaluate answers and update mastery
+POST /api/diagnose          -- generate diagnostic questions for a concept
+POST /api/diagnose/evaluate -- evaluate answers and update mastery
 """
 
 from datetime import datetime, timezone
-
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 import json as _json
@@ -23,12 +22,11 @@ from app.utils.response import success_response, error_response
 
 diagnose_bp = Blueprint("diagnose", __name__)
 
-
-@diagnose_bp.route("", methods=["POST"])
+@diagnose_bp.post("/")
+@jwt_required()
 def start_diagnostic():
     data = request.get_json(silent=True) or {}
 
-    # Accept student_id from body OR extract from JWT token
     student_id = data.get("student_id")
     if not student_id:
         try:
@@ -40,14 +38,13 @@ def start_diagnostic():
     concept_id = data.get("concept_id")
     num_questions = data.get("num_questions", 5)
 
-    if not student_id or not concept_id:
-        return error_response("VALIDATION_ERROR", "student_id and concept_id are required.", {}, 400)
+    if not concept_id:
+        return error_response("VALIDATION_ERROR", "concept_id is required.", {}, 400)
 
     concept = Concept.query.get(concept_id)
     if concept is None:
         return error_response("NOT_FOUND", "Concept not found.", {"concept_id": concept_id}, 404)
 
-    # Pick diagnostic questions for this concept (up to num_questions)
     questions = (
         DiagnosticQuestion.query
         .filter_by(concept_id=concept_id)
@@ -64,9 +61,8 @@ def start_diagnostic():
             404,
         )
 
-    # Create a diagnostic session
     session = DiagnosticSession(
-        student_id=int(student_id),
+        student_id=int(student_id) if student_id else 0,
         concept_id=int(concept_id),
         result="pending",
     )
@@ -83,7 +79,8 @@ def start_diagnostic():
     )
 
 
-@diagnose_bp.route("/evaluate", methods=["POST"])
+@diagnose_bp.post("/evaluate")
+@jwt_required()
 def evaluate_diagnostic():
     data = request.get_json(silent=True) or {}
 
@@ -108,14 +105,12 @@ def evaluate_diagnostic():
 
     for ans in answers:
         question_id = ans.get("question_id")
-        # Accept either 'answer' (text) or 'choice_id' as the student's response
         student_answer = str(ans.get("answer") or ans.get("choice_id") or "").strip()
 
         question = DiagnosticQuestion.query.get(question_id)
         if question is None:
             continue
 
-        # Deterministic comparison (case-insensitive, trimmed)
         expected = (question.expected_answer or "").strip()
         is_correct = False
 
@@ -162,7 +157,6 @@ def evaluate_diagnostic():
             ),
         })
 
-    # Calculate score
     score = correct_count / total_count if total_count > 0 else 0.0
     passed = score >= session.pass_threshold
 
@@ -170,7 +164,6 @@ def evaluate_diagnostic():
     session.result = "pass" if passed else "fail"
     session.completed_at = datetime.now(timezone.utc)
 
-    # Update student progress
     now = datetime.now(timezone.utc)
     progress = StudentProgress.query.filter_by(
         student_id=session.student_id,

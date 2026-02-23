@@ -1,5 +1,5 @@
-"""
-SikshyaMap AI — Flask Application Factory.
+﻿"""
+SikshyaMap AI - Flask Application Factory.
 
 Creates and configures the Flask application with all extensions,
 blueprints, and database setup.
@@ -8,27 +8,23 @@ blueprints, and database setup.
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-
+from config import Config
+from config import config as config_map
 from app.models import db
-
 
 jwt = JWTManager()
 
-
-def create_app(config_name="default"):
+def create_app(cfg=Config):
     """Application factory — creates and returns a fully configured Flask app."""
-    from config import config as config_map
 
     app = Flask(__name__)
-    app.config.from_object(config_map[config_name])
+    app.config.from_object(cfg)
     app.url_map.strict_slashes = False
 
-    # --- extensions ---
     db.init_app(app)
     jwt.init_app(app)
     CORS(app)
 
-    # --- blueprints ---
     from app.routes.auth import auth_bp
     from app.routes.concepts import concepts_bp
     from app.routes.problems import problems_bp
@@ -36,6 +32,7 @@ def create_app(config_name="default"):
     from app.routes.resources import resources_bp
     from app.routes.diagnose import diagnose_bp
     from app.routes.progress import progress_bp
+    from app.routes.simulations import simulations_bp
     from app.routes.students import student_bp
     from app.routes.simulations import simulations_bp
     from app.routes.sikshya import sikshya_bp
@@ -47,11 +44,11 @@ def create_app(config_name="default"):
     app.register_blueprint(resources_bp, url_prefix="/api/resources")
     app.register_blueprint(diagnose_bp, url_prefix="/api/diagnose")
     app.register_blueprint(progress_bp, url_prefix="/api/progress")
+    app.register_blueprint(simulations_bp, url_prefix="/api/simulations")
     app.register_blueprint(student_bp, url_prefix="/api/students")
     app.register_blueprint(simulations_bp, url_prefix="/api/simulations")
     app.register_blueprint(sikshya_bp, url_prefix="/api/sikshya")
 
-    # --- create tables ---
     with app.app_context():
         db.create_all()
 

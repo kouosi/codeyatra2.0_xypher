@@ -1,10 +1,10 @@
-"""
-Diagnostic engine — the deterministic core of SikshyaMap AI.
+﻿"""
+Diagnostic engine -- evaluation logic for step-based problems.
 
-Implements:
-  - Error pattern matching (spec §6.1)
-  - Progressive hint strategy (spec §6.2)
-  - Backtrack decision logic (spec §6.3)
+Step-based flow:
+  - Student selects a StepOption by ID at each Step.
+  - If is_correct -> advance to next step, reveal explanation.
+  - If wrong -> return feedback, allow retry (with hint on 2nd attempt).
 """
 
 import re
@@ -34,7 +34,7 @@ def _answers_match(student_answer: str, correct_answer: str, tolerance: float = 
 
 
 # ---------------------------------------------------------------------------
-# 6.1 Error Pattern Matching
+# Primary evaluation entry point
 # ---------------------------------------------------------------------------
 
 def match_error_pattern(checkpoint_id: int, student_answer: str) -> ErrorPattern | None:
@@ -62,114 +62,45 @@ def match_error_pattern(checkpoint_id: int, student_answer: str) -> ErrorPattern
     matches.sort(key=lambda p: p.confidence, reverse=True)
     return matches[0]
 
-
-# ---------------------------------------------------------------------------
-# 6.2 Progressive Hint Strategy
-# ---------------------------------------------------------------------------
-
-def get_feedback(checkpoint: Checkpoint, pattern: ErrorPattern | None, attempt_number: int) -> dict:
-    """
-    Return the appropriate feedback dict based on attempt # and pattern match.
-
-    Attempt 1 → generic hint (checkpoint.hint)
-    Attempt 2 → specific diagnosis (error_pattern.diagnosis_text)
-    Attempt 3+ → backtrack signal
-    """
-    if pattern is None:
-        # No pattern matched — generic response
+    # Guard: option must belong to this step
+    if option is None or option.step_id != step.id:
         return {
-            "feedback": checkpoint.hint or "That's not quite right. Try again.",
-            "error_type": None,
-            "missing_concept": None,
-            "hint": checkpoint.hint,
+            "correct": False,
+            "feedback": "Invalid option selected. Please choose one of the options provided.",
+            "explanation": None,
+            "hint": None,
+            "next_action": "retry",
         }
 
-    missing_concept = None
-    if pattern.missing_concept_id:
-        concept = Concept.query.get(pattern.missing_concept_id)
-        if concept:
-            missing_concept = {"id": concept.id, "name": concept.name, "description": concept.description}
+    if option.is_correct:
+        return {
+            "correct": True,
+            "feedback": "Correct! Great work.",
+            "explanation": step.explanation,
+            "hint": None,
+            "next_action": "continue",
+        }
 
+    # Wrong answer
     if attempt_number == 1:
-        return {
-            "feedback": checkpoint.hint or "Not quite. Think about what each trig function gives you.",
-            "error_type": pattern.error_type,
-            "missing_concept": missing_concept,
-            "hint": checkpoint.hint,
-        }
+        feedback = "Not quite right. Review the step description and try again."
+        hint = step.step_description
+    else:
+        # Hint: reveal the correct answer text on 2nd+ attempt
+        feedback = f"Still incorrect. Hint: look for the option that matches -- {step.correct_answer[:80]}..."
+        hint = step.correct_answer
 
-    if attempt_number == 2:
-        return {
-            "feedback": pattern.diagnosis_text,
-            "error_type": pattern.error_type,
-            "missing_concept": missing_concept,
-            "hint": pattern.diagnosis_text,
-        }
-
-    # attempt >= 3
     return {
-        "feedback": f"This error suggests you need to review {missing_concept['name'] if missing_concept else 'a prerequisite concept'}.",
-        "error_type": pattern.error_type,
-        "missing_concept": missing_concept,
-        "hint": "Let's fix this gap before continuing.",
+        "correct": False,
+        "feedback": feedback,
+        "explanation": None,
+        "hint": hint,
+        "next_action": "retry",
     }
 
 
 # ---------------------------------------------------------------------------
-# 6.3 Backtracking Decision Logic
-# ---------------------------------------------------------------------------
-
-def should_backtrack(pattern: ErrorPattern | None, attempt_number: int, student_id: int) -> bool:
-    """
-    Decide whether the student should be routed to a prerequisite concept.
-
-    Returns True only when:
-      - 3+ attempts on this checkpoint
-      - A pattern with a missing_concept_id was matched
-    """
-    if attempt_number < 3:
-        return False
-
-    if pattern is None:
-        return False
-
-    if pattern.missing_concept_id is None:
-        return False
-
-    return True
-
-
-def get_backtrack_path(student_id: int, missing_concept_id: int) -> list[dict]:
-    """
-    Build the backtrack path: list of concepts from missing prerequisite up to
-    the current concept, annotated with the student's mastery status.
-    """
-    concept = Concept.query.get(missing_concept_id)
-    if concept is None:
-        return []
-
-    chain = concept.get_prerequisite_chain()
-    chain.append(concept)
-
-    path = []
-    for c in chain:
-        progress = StudentProgress.query.filter_by(
-            student_id=student_id,
-            concept_id=c.id,
-        ).first()
-
-        status = progress.status if progress else "not_started"
-        path.append({
-            "concept": c.to_dict(),
-            "status": status,
-            "is_target": c.id == missing_concept_id,
-        })
-
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Full checkpoint evaluation (combines all three)
+# Progress helpers (shared with sessions route)
 # ---------------------------------------------------------------------------
 
 def evaluate_checkpoint_answer(
@@ -184,45 +115,24 @@ def evaluate_checkpoint_answer(
     """
     is_correct = _answers_match(student_answer, checkpoint.correct_answer, checkpoint.tolerance)
 
-    if is_correct:
-        return {
-            "correct": True,
-            "feedback": "Correct! Well done.",
-            "backtrack": False,
-            "error_type": None,
-            "missing_concept": None,
-            "hint": None,
-            "next_action": "continue",
-            "confidence": 1.0,
-            "behavioral_flags": [],
-        }
+    progress = StudentProgress.query.filter_by(
+        student_id=student_id,
+        concept_id=concept_id,
+    ).first()
 
-    # Wrong answer — match pattern
-    pattern = match_error_pattern(checkpoint.id, student_answer)
-    feedback_info = get_feedback(checkpoint, pattern, attempt_number)
-    backtrack = should_backtrack(pattern, attempt_number, student_id)
+    now = datetime.now(timezone.utc)
 
-    result = {
-        "correct": False,
-        **feedback_info,
-        "backtrack": backtrack,
-        "confidence": pattern.confidence if pattern else 0.0,
-        "behavioral_flags": [],
-    }
-
-    if backtrack and pattern and pattern.missing_concept_id:
-        result["next_action"] = "backtrack"
-        result["backtrack_path"] = get_backtrack_path(student_id, pattern.missing_concept_id)
-
-        # Down-grade progress if previously mastered
-        progress = StudentProgress.query.filter_by(
+    if progress is None:
+        progress = StudentProgress(
             student_id=student_id,
-            concept_id=pattern.missing_concept_id,
-        ).first()
-        if progress and progress.status == "mastered":
-            progress.status = "needs_review"
-            db.session.commit()
+            concept_id=concept_id,
+            status="in_progress",
+            attempts=1,
+            last_attempted_at=now,
+        )
+        db.session.add(progress)
     else:
-        result["next_action"] = "retry"
+        progress.attempts = (progress.attempts or 0) + 1
+        progress.last_attempted_at = now
 
-    return result
+    db.session.commit()

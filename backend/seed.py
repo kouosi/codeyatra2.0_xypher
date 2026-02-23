@@ -2,12 +2,10 @@
 Database seed script — populates the database from JSON data files.
 
 Reads:
-  concepts.json            → Concept + ConceptPrerequisite
-  resources.json           → Resource
-  trigonometry.json         → Problem + Checkpoint + CheckpointChoice + ErrorPattern
-  vector_decomposition.json → Problem + Checkpoint + CheckpointChoice + ErrorPattern
-  projectile_motion.json    → Problem + Checkpoint + CheckpointChoice + ErrorPattern
-  basic_algebra.json        → Problem + Checkpoint + CheckpointChoice + ErrorPattern
+  concepts.json                    → Concept + ConceptPrerequisite
+  resources.json                   → Resource
+  problem system/
+    sikshya_problems_dataset.json  → Problem + Step + StepOption (30 problems)
 
 Usage:
   python seed.py           (from backend/ directory)
@@ -27,9 +25,8 @@ from app.models import (
     Concept,
     ConceptPrerequisite,
     Problem,
-    Checkpoint,
-    CheckpointChoice,
-    ErrorPattern,
+    Step,
+    StepOption,
     Resource,
     DiagnosticQuestion,
 )
@@ -38,17 +35,11 @@ from app.models.simulation import Simulation
 # --------------------------------------------------------------------
 # Paths — JSON files live in backend/data/
 # --------------------------------------------------------------------
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "Xtra")
+NEW_PROBLEMS_FILE = os.path.join(DATA_DIR, "problem system", "sikshya_problems_dataset.json")
 
 CONCEPT_FILE = os.path.join(DATA_DIR, "concepts.json")
 RESOURCE_FILE = os.path.join(DATA_DIR, "resources.json")
-PROBLEM_FILES = [
-    os.path.join(DATA_DIR, "trigonometry.json"),
-    os.path.join(DATA_DIR, "vector_decomposition.json"),
-    os.path.join(DATA_DIR, "projectile_motion.json"),
-    os.path.join(DATA_DIR, "basic_algebra.json"),
-    os.path.join(DATA_DIR, "problems.json"),
-]
 
 # Map from slug to DB id (populated during concept seeding)
 concept_id_map: dict[str, int] = {}
@@ -89,13 +80,13 @@ def seed_concepts():
         "vector_decomposition": ("physics", "Mechanics"),
         "kinematic_equations": ("physics", "Mechanics"),
         "projectile_motion": ("physics", "Mechanics"),
-        "newtons_laws": ("physics", "Mechanics"),
-        "work_energy_power": ("physics", "Mechanics"),
-        "gravitation": ("physics", "Mechanics"),
-        "simple_harmonic_motion": ("physics", "Waves & Oscillations"),
-        "wave_motion": ("physics", "Waves & Oscillations"),
-        "current_electricity": ("physics", "Electricity"),
-        "magnetic_fields": ("physics", "Magnetism"),
+
+        "rotational_dynamics": ("physics", "Rotational Mechanics"),
+        "organic_chemistry_basics": ("chemistry", "Organic Chemistry"),
+        "electrophilic_addition": ("chemistry", "Organic Chemistry"),
+        "calculus_basics": ("math", "Calculus"),
+        "area_under_curves": ("math", "Calculus"),
+
     }
 
     # Concepts that are NOT directly in the NEB syllabus chapters
@@ -175,41 +166,129 @@ def seed_resources():
 
 
 # ===================================================================
-# 3. Seed Problems (with Checkpoints, Choices, ErrorPatterns)
+# 3. Seed Problems from sikshya_problems_dataset.json (Step-based)
 # ===================================================================
-def seed_problems():
-    print("── Seeding problems …")
+
+# Map dataset topic names → concept slugs already in concepts.json
+TOPIC_TO_SLUG: dict[str, str] = {
+    "Vectors and Scalars": "vector_decomposition",
+    "Vector Addition and Components": "vector_decomposition",
+    "Kinematics": "kinematic_equations",
+    "Projectile Motion": "projectile_motion",
+    "Rotational Dynamics": "rotational_dynamics",
+    "Organic Chemistry": "organic_chemistry_basics",
+    "Organic Chemistry Basics": "organic_chemistry_basics",
+    "Electrophilic Addition": "electrophilic_addition",
+    "Trigonometry": "trigonometry",
+    "Basic Algebra": "basic_algebra",
+    "Calculus": "calculus_basics",
+    "Area Under Curves": "area_under_curves",
+}
+
+NEW_DIFFICULTY_MAP = {"easy": 1, "Easy": 1, "medium": 2, "Medium": 2, "hard": 3, "Hard": 3}
+
+
+def _find_or_create_concept(topic: str, subject: str) -> int | None:
+    """Return concept id for given topic, creating one if needed."""
+    # Try existing slug mapping first
+    slug = TOPIC_TO_SLUG.get(topic)
+    if slug and slug in concept_id_map:
+        return concept_id_map[slug]
+
+    # Try partial name match in concept_id_map keys
+    topic_lower = topic.lower().replace(" ", "_")
+    for s, cid in concept_id_map.items():
+        if s in topic_lower or topic_lower in s:
+            return cid
+
+    # Create a new concept for this topic
+    subj_map = {"Physics": "physics", "Chemistry": "chemistry", "Mathematics": "math"}
+    subj = subj_map.get(subject, "physics")
+
+    new_concept = Concept(
+        name=topic,
+        subject=subj,
+        topic=topic,
+        difficulty=2,
+        description=f"{topic} — NEB syllabus topic.",
+        is_syllabus=True,
+        neb_class=11,
+    )
+    db.session.add(new_concept)
+    db.session.flush()
+    slug_key = topic.lower().replace(" ", "_")
+    concept_id_map[slug_key] = new_concept.id
+    print(f"   + New concept [{new_concept.id}] {new_concept.name}")
+    return new_concept.id
+
+
+def seed_new_problems():
+    """Seed problems from sikshya_problems_dataset.json using the Step/StepOption model."""
+    print("── Seeding problems from sikshya_problems_dataset.json …")
+
+    if not os.path.exists(NEW_PROBLEMS_FILE):
+        print(f"   ⚠ Dataset not found: {NEW_PROBLEMS_FILE} — skipping")
+        return
+
+    data = _load_json(NEW_PROBLEMS_FILE)
     total_p = 0
-    total_cp = 0
-    total_ch = 0
-    total_ep = 0
+    total_s = 0
+    total_o = 0
 
-    for path in PROBLEM_FILES:
-        if not os.path.exists(path):
-            print(f"   ⚠ File not found: {path} — skipping")
-            continue
+    for prob_data in data.get("problems", []):
+        ext_id = prob_data.get("id", "")
+        subject = prob_data.get("subject", "")
+        topic = prob_data.get("topic", "")
+        subtopic = prob_data.get("subtopic", "")
+        difficulty_raw = prob_data.get("difficulty", "Easy")
+        difficulty = NEW_DIFFICULTY_MAP.get(difficulty_raw, 1)
+        problem_type = prob_data.get("problemType", "")
+        neb_alignment = prob_data.get("neb_alignment", "")
+        problem_statement = prob_data.get("problemStatement", "")
+        grade_levels = prob_data.get("gradeLevels", [])
 
-        data = _load_json(path)
-        fname = os.path.basename(path)
-        print(f"\n   📄 {fname}")
+        # Try to link to an existing concept
+        concept_id = _find_or_create_concept(topic, subject)
 
-        for prob in data["problems"]:
-            slug = prob["concept_id"]
-            cid = concept_id_map.get(slug)
-            if cid is None:
-                print(f"      ⚠ Unknown concept: {slug} — skipping {prob['title']}")
-                continue
+        title = f"{ext_id}: {topic} — {subtopic}" if subtopic else f"{ext_id}: {topic}"
+        if len(title) > 255:
+            title = title[:252] + "..."
 
-            diff_raw = prob.get("difficulty", "easy")
-            diff = DIFFICULTY_MAP.get(diff_raw, 1) if isinstance(diff_raw, str) else int(diff_raw)
+        problem = Problem(
+            ext_id=ext_id,
+            concept_id=concept_id,
+            title=title,
+            description=problem_statement,
+            difficulty=difficulty,
+            subject=subject,
+            topic=topic,
+            subtopic=subtopic,
+            problem_type=problem_type,
+            neb_alignment=neb_alignment,
+            problem_statement=problem_statement,
+        )
+        db.session.add(problem)
+        db.session.flush()
+        total_p += 1
+        print(f"   + Problem [{problem.id}] {ext_id}: {topic}")
 
-            problem = Problem(
-                concept_id=cid,
-                title=prob["title"],
-                description=prob.get("text", prob.get("description", "")),
-                difficulty=diff,
+        for step_data in prob_data.get("steps", []):
+            step_number = step_data.get("stepNumber", 1)
+            step_title = step_data.get("stepTitle", "")
+            step_description = step_data.get("stepDescription", "")
+            correct_answer = step_data.get("correctAnswer", "")
+            explanation = step_data.get("explanation", "")
+            options_raw = step_data.get("options", [])
+
+            step = Step(
+                problem_id=problem.id,
+                step_number=step_number,
+                step_title=step_title,
+                step_description=step_description,
+                correct_answer=correct_answer,
+                explanation=explanation,
             )
-            db.session.add(problem)
+            db.session.add(step)
             db.session.flush()
             total_p += 1
             print(f"      + Problem [{problem.id}] {problem.title}")
@@ -614,7 +693,7 @@ def main():
 
         seed_concepts()
         seed_resources()
-        seed_problems()
+        seed_new_problems()
         seed_diagnostic_questions()
         seed_simulations()
 
