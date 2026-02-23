@@ -15,9 +15,6 @@ const DIFFICULTY_BADGES = {
   easy:   { label: "Beginner", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   medium: { label: "Explorer", color: "bg-amber-100 text-amber-700 border-amber-200" },
   hard:   { label: "Master",   color: "bg-rose-100 text-rose-700 border-rose-200" },
-  easy:   { label: "Beginner", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  medium: { label: "Explorer", color: "bg-amber-100 text-amber-700 border-amber-200" },
-  hard:   { label: "Master",   color: "bg-rose-100 text-rose-700 border-rose-200" },
 };
 
 export default function QuestionsPage() {
@@ -190,7 +187,6 @@ export default function QuestionsPage() {
           className="shrink-0 px-6 py-2.5 rounded-xl bg-amber-brand hover:bg-amber-hover font-bold text-sm transition-all active:scale-95 shadow-sm shadow-amber-brand/20"
         >
           Run Diagnosis
-          Run Diagnosis
         </button>
       </div>
     </main>
@@ -219,7 +215,6 @@ function MissionCard({ concept, index, onSolve, onDiagnose, onPath }) {
           </div>
         </div>
         <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${diff.color}`}>
-          {diff.label}
           {diff.label}
         </span>
       </div>
@@ -253,7 +248,6 @@ function MissionCard({ concept, index, onSolve, onDiagnose, onPath }) {
           </span>
           {prereqCount > 0 && (
             <span className="flex items-center gap-1">{prereqCount} prereq{prereqCount !== 1 ? "s" : ""}</span>
-            <span className="flex items-center gap-1">{prereqCount} prereq{prereqCount !== 1 ? "s" : ""}</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -261,7 +255,6 @@ function MissionCard({ concept, index, onSolve, onDiagnose, onPath }) {
             onClick={onPath}
             className="text-[11px] px-3 py-1.5 rounded-lg border border-gray-200 hover:border-amber-brand/40 text-text-secondary hover:text-amber-700 font-semibold transition-all"
           >
-            Path
             Path
           </button>
           <button
