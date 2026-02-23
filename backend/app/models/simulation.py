@@ -50,7 +50,8 @@ class Simulation(db.Model):
         return {
             "id": self.id,
             "concept_id": self.concept_id,
-            "type": self.simulation_type,
+            "simulation_type": self.simulation_type,
+            "type": self.simulation_type,  # backward-compat alias
             "title": self.title,
             "description": self.description,
             "configuration": self.configuration,
