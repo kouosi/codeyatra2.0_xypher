@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+﻿import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Navbar() {
@@ -42,10 +42,7 @@ export default function Navbar() {
         {navLink("/pathfinder", "Learning Path")}
         {navLink("/questions", "Missions")}
         {navLink("/diagnose", "Diagnose")}
-<<<<<<< HEAD
         {navLink("/simulations", "Simulations")}
-=======
->>>>>>> main
         {navLink("/progress", "Progress")}
 
         {user ? (
